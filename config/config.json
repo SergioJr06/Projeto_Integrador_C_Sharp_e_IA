@@ -1,0 +1,10 @@
+{
+    "cameras": {
+        "cam_0": {
+            "nome": "Webcam Local",
+            "source": 0,
+            "require_helmet": true,
+            "require_glasses": false
+        }
+    }
+}
