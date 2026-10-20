@@ -2,3 +2,18 @@ venv/
 __pycache__/
 capturas_violacao/
 .env
+
+# .NET
+bin/
+obj/
+.vs/
+*.user
+
+# Python
+.venv/
+*.pyc
+
+# Evidências geradas em tempo de execução (mantém só a pasta)
+SafeGuardBackend/wwwroot/evidencias/*
+!SafeGuardBackend/wwwroot/evidencias/.gitkeep
+relatorio_violacoes.csv
