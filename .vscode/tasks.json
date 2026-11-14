@@ -1,0 +1,99 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Banco (docker compose up)",
+      "type": "shell",
+      "command": "docker compose up -d",
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "group": "safeguard"
+      }
+    },
+    {
+      "label": "API (porta 5168)",
+      "type": "shell",
+      "command": "dotnet run --project SafeGuardBackend/SafeGuardBackend.csproj --launch-profile http",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "group": "safeguard"
+      },
+      "options": {
+        "env": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
+      }
+    },
+    {
+      "label": "Painel (porta 5080)",
+      "type": "shell",
+      "command": "dotnet run --project SafeGuardFrontend/SafeGuardFrontend.csproj --urls http://0.0.0.0:5080",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "group": "safeguard"
+      },
+      "options": {
+        "env": {
+          "ASPNETCORE_ENVIRONMENT": "Development"
+        }
+      }
+    },
+    {
+      "label": "Motor de IA (webcam)",
+      "type": "shell",
+      "command": "${workspaceFolder}/.venv/Scripts/python.exe src/automacaototal.py",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "group": "safeguard"
+      }
+    },
+    {
+      "label": "Iniciar tudo (sem IA)",
+      "dependsOn": [
+        "Banco (docker compose up)",
+        "API (porta 5168)",
+        "Painel (porta 5080)"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "Iniciar tudo (com IA)",
+      "dependsOn": [
+        "Banco (docker compose up)",
+        "API (porta 5168)",
+        "Painel (porta 5080)",
+        "Motor de IA (webcam)"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "build-api",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/SafeGuardBackend/SafeGuardBackend.csproj"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build-painel",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/SafeGuardFrontend/SafeGuardFrontend.csproj"
+      ],
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

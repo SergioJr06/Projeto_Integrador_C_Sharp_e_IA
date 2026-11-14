@@ -1,0 +1,263 @@
+@page "/relatorios"
+@attribute [Authorize]
+@using System.Globalization
+@using System.Security.Claims
+@inject MonitoramentoService Monitoramento
+@inject CameraConfigService Config
+<PageTitle>SafeGuard IA | Relatórios</PageTitle>
+
+<header class="page-header no-print">
+    <div>
+        <div class="eyebrow">Relatórios</div>
+        <h1>Relatório descritivo personalizável</h1>
+        <p class="subtitle">Escolha o período, o conteúdo e acrescente suas observações. Depois imprima ou salve em PDF.</p>
+    </div>
+</header>
+
+@if (!string.IsNullOrWhiteSpace(aviso)) { <div class="notice no-print">@aviso</div> }
+
+<section class="panel no-print">
+    <form method="get" action="/relatorios">
+        <input type="hidden" name="gerar" value="1" />
+        <div class="report-form">
+            <label class="field field-wide"><span>Título do relatório</span><input type="text" name="titulo" value="@Titulo" maxlength="100" /></label>
+            <label class="field"><span>Data inicial</span><input type="date" name="inicio" value="@Inicio.ToString("yyyy-MM-dd")" /></label>
+            <label class="field"><span>Data final</span><input type="date" name="fim" value="@Fim.ToString("yyyy-MM-dd")" /></label>
+            @if (Admin)
+            {
+                <label class="field"><span>Câmera</span>
+                    <select name="camera">
+                        <option value="">Todas as câmeras</option>
+                        @foreach (var c in Cameras) { <option value="@c" selected="@(Camera == c)">@c</option> }
+                    </select>
+                </label>
+            }
+            else
+            {
+                <div class="field"><span>Câmera sob sua responsabilidade</span><div class="field-fixo">@(Camera == "" ? "Nenhuma atribuída" : Camera)</div></div>
+            }
+            <label class="field"><span>Elaborado por</span><input type="text" name="autor" value="@Autor" maxlength="80" /></label>
+        </div>
+
+        <fieldset class="secoes">
+            <legend>O que incluir</legend>
+            @foreach (var s in Secoes)
+            {
+                <label class="check"><input type="checkbox" name="s" value="@s.Chave" checked="@Tem(s.Chave)" /><span>@s.Rotulo</span></label>
+            }
+        </fieldset>
+
+        <label class="field field-wide"><span>Observações e conclusões (aparecem no fim do relatório)</span>
+            <textarea name="obs" rows="4" maxlength="2000">@Obs</textarea>
+        </label>
+
+        <div class="form-actions"><button type="submit" class="btn btn-primary btn-lg">Gerar relatório</button></div>
+    </form>
+</section>
+
+@if (Gerado && Dados is not null)
+{
+    <div class="report-actions no-print">
+        <button type="button" class="btn btn-primary" onclick="window.print()">Imprimir / salvar em PDF</button>
+        <a class="btn @(Dados.Total == 0 ? "disabled" : "")" href="@CsvUrl">Exportar CSV</a>
+    </div>
+
+    <article class="relatorio">
+        <header class="relatorio-cab">
+            <div class="eyebrow">SafeGuard IA · Monitoramento de EPIs</div>
+            <h2>@Titulo</h2>
+            <dl class="relatorio-meta">
+                <div><dt>Período</dt><dd>@(Inicio == Fim ? RelatorioBuilder.D(Inicio) : RelatorioBuilder.D(Inicio) + " a " + RelatorioBuilder.D(Fim))</dd></div>
+                <div><dt>Câmera</dt><dd>@(Camera == "" ? "Todas" : Camera)</dd></div>
+                <div><dt>Elaborado por</dt><dd>@Autor</dd></div>
+                <div><dt>Gerado em</dt><dd>@DateTime.Now.ToString("dd/MM/yyyy HH:mm")</dd></div>
+            </dl>
+        </header>
+
+        @if (Tem("resumo"))
+        {
+            <section class="rel-sec">
+                <h3>Indicadores</h3>
+                <div class="rel-kpis">
+                    <div><span>Infrações</span><strong>@Dados.Total</strong></div>
+                    <div><span>EPI mais recorrente</span><strong>@(Dados.PorEpi.Count > 0 ? Dados.PorEpi[0].Rotulo : "—")</strong></div>
+                    <div><span>Dias com ocorrência</span><strong>@Dados.PorDia.Count de @Dados.DiasNoPeriodo</strong></div>
+                    <div><span>Confiança média da IA</span><strong>@Dados.ConfiancaMedia.ToString("P1")</strong></div>
+                </div>
+            </section>
+        }
+
+        @if (Tem("texto"))
+        {
+            <section class="rel-sec">
+                <h3>Resumo descritivo</h3>
+                <p class="rel-texto">@Dados.Texto</p>
+            </section>
+        }
+
+        @if (Tem("epis") && Dados.PorEpi.Count > 0)
+        {
+            <section class="rel-sec">
+                <h3>Infrações por tipo de EPI</h3>
+                <table class="rel-tabela">
+                    <thead><tr><th>EPI</th><th>Ocorrências</th><th>Participação nas infrações</th></tr></thead>
+                    <tbody>
+                    @foreach (var i in Dados.PorEpi)
+                    {
+                        var pct = Dados.Total == 0 ? 0 : i.Qtd * 100.0 / Dados.Total;
+                        <tr>
+                            <td>@i.Rotulo</td>
+                            <td>@i.Qtd</td>
+                            <td><div class="bar-cell"><div class="bar-track"><span style="width:@(pct.ToString("F0", CultureInfo.InvariantCulture))%"></span></div><small>@pct.ToString("F1")%</small></div></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </section>
+        }
+
+        @if (Tem("dias") && Dados.PorDia.Count > 0)
+        {
+            var maximo = Dados.PorDia.Max(x => x.Qtd);
+            <section class="rel-sec">
+                <h3>Ocorrências por dia</h3>
+                <table class="rel-tabela">
+                    <thead><tr><th>Data</th><th>Ocorrências</th><th></th></tr></thead>
+                    <tbody>
+                    @foreach (var d in Dados.PorDia)
+                    {
+                        <tr>
+                            <td>@d.Rotulo</td>
+                            <td>@d.Qtd</td>
+                            <td><div class="bar-cell"><div class="bar-track"><span style="width:@((d.Qtd * 100.0 / maximo).ToString("F0", CultureInfo.InvariantCulture))%"></span></div></div></td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </section>
+        }
+
+        @if (Tem("lista") && Dados.Total > 0)
+        {
+            var comImagens = Tem("miniaturas");
+            <section class="rel-sec">
+                <h3>Ocorrências registradas</h3>
+                <table class="rel-tabela">
+                    <thead>
+                        <tr><th>Ocorrência</th><th>Câmera</th><th>EPIs não conformes</th><th>Confiança</th><th>Data e hora</th>@if (comImagens) { <th>Evidência</th> }</tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var item in Dados.Lista.Take(LimiteLista))
+                    {
+                        <tr>
+                            <td>#@item.Id.ToString("D4")</td>
+                            <td>@item.CameraId</td>
+                            <td>@string.Join(", ", EpiFormatter.Dividir(item.EpisFaltantes))</td>
+                            <td>@item.NivelConfianca.ToString("P0")</td>
+                            <td>@item.DataHora.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            @if (comImagens) { <td><img class="rel-thumb" src="@item.CaminhoEvidencia" alt="Evidência da ocorrência @item.Id" onerror="this.style.display='none'" /></td> }
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+                @if (Dados.Total > LimiteLista)
+                {
+                    <p class="rel-nota">Exibindo as @LimiteLista ocorrências mais recentes de @Dados.Total. Use “Exportar CSV” para a lista completa.</p>
+                }
+            </section>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Obs))
+        {
+            <section class="rel-sec">
+                <h3>Observações</h3>
+                <p class="rel-texto rel-obs">@Obs</p>
+            </section>
+        }
+
+        <footer class="rel-rodape">Relatório gerado pelo SafeGuard IA em @DateTime.Now.ToString("dd/MM/yyyy 'às' HH:mm") por @Autor.</footer>
+    </article>
+}
+
+@code {
+    private const int LimiteLista = 200;
+
+    private sealed record Secao(string Chave, string Rotulo);
+    private static readonly Secao[] Secoes =
+    {
+        new("resumo", "Indicadores"),
+        new("texto", "Resumo descritivo"),
+        new("epis", "Infrações por EPI"),
+        new("dias", "Ocorrências por dia"),
+        new("lista", "Lista de ocorrências"),
+        new("miniaturas", "Miniaturas das evidências")
+    };
+
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool Admin;
+    private bool Gerado;
+    private string aviso = "";
+    private string Titulo = "Relatório de conformidade de EPIs";
+    private string Autor = "";
+    private string Obs = "";
+    private string Camera = "";
+    private DateOnly Inicio = DateOnly.FromDateTime(DateTime.Today.AddDays(-6));
+    private DateOnly Fim = DateOnly.FromDateTime(DateTime.Today);
+    private HashSet<string> Marcadas = new() { "resumo", "texto", "epis", "dias", "lista" };
+    private List<string> Cameras = new();
+    private RelatorioDados? Dados;
+
+    private bool Tem(string chave) => Marcadas.Contains(chave);
+
+    private string CsvUrl => "/exportar.csv?inicio=" + Inicio.ToString("yyyy-MM-dd") + "&fim=" + Fim.ToString("yyyy-MM-dd")
+                             + "&camera=" + Uri.EscapeDataString(Camera);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var usuario = AuthState is null ? new ClaimsPrincipal() : (await AuthState).User;
+        Admin = usuario.EhAdmin();
+        Autor = usuario.FindFirst(Acesso.ClaimNome)?.Value ?? usuario.Identity?.Name ?? "";
+
+        var q = HttpContext?.Request.Query;
+        string Q(string chave) => q is not null && q.TryGetValue(chave, out var v) ? v.ToString() : "";
+
+        Gerado = Q("gerar") == "1";
+        if (Gerado)
+        {
+            if (Q("titulo").Trim() != "") Titulo = Q("titulo").Trim();
+            if (Q("autor").Trim() != "") Autor = Q("autor").Trim();
+            Obs = Q("obs").Trim();
+            if (DateOnly.TryParseExact(Q("inicio"), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var di)) Inicio = di;
+            if (DateOnly.TryParseExact(Q("fim"), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var df)) Fim = df;
+            if (Inicio > Fim) (Inicio, Fim) = (Fim, Inicio);
+            Marcadas = (q is not null && q.TryGetValue("s", out var marcadas) ? marcadas.ToArray() : Array.Empty<string?>())
+                .Where(x => x is not null && Secoes.Any(s => s.Chave == x)).Select(x => x!).ToHashSet();
+        }
+
+        var reais = await Monitoramento.ListarAsync();
+        var todos = reais;
+        if (todos is null)
+        {
+            todos = PainelDados.Demo();
+            aviso = "Modo demonstração: API indisponível. O relatório usa dados simulados.";
+        }
+        // Permissionamento: usuário comum só gera relatório da própria câmera.
+        todos = usuario.Permitidas(todos);
+        if (!Admin && usuario.CameraDoUsuario() == "")
+            aviso = "Nenhuma câmera foi atribuída ao seu usuário. Peça ao administrador para definir a sua câmera.";
+
+        var conhecidas = todos.Select(x => x.CameraId).ToHashSet();
+        if (Admin)
+        {
+            try { foreach (var c in await Config.ListarAsync()) conhecidas.Add(c.Id); }
+            catch (Exception) { /* sem config.json: usa só as câmeras que já têm registros */ }
+        }
+        Cameras = conhecidas.OrderBy(x => x).ToList();
+        var cameraPedida = Q("camera");
+        Camera = Admin ? (Cameras.Contains(cameraPedida) ? cameraPedida : "") : usuario.CameraDoUsuario();
+
+        if (Gerado) Dados = RelatorioBuilder.Montar(todos, Inicio, Fim, Camera);
+    }
+}

@@ -1,0 +1,65 @@
+@page "/login"
+@layout LoginLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject AuthService Auth
+@inject NavigationManager Navigation
+<PageTitle>SafeGuard IA | Acesso</PageTitle>
+
+<section class="login-card">
+    <div class="login-brand">
+        <div class="brand-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z" fill="currentColor"/></svg></div>
+        <div><strong>SafeGuard IA</strong><small>Monitoramento de EPIs</small></div>
+    </div>
+    <h1>Acesso ao sistema</h1>
+    <p class="login-sub">Informe suas credenciais para continuar.</p>
+
+    <EditForm Model="Input" FormName="login" OnValidSubmit="Entrar" method="post">
+        <label for="usuario">Usuário</label>
+        <InputText id="usuario" @bind-Value="Input!.Usuario" autocomplete="username" autofocus="autofocus" />
+        <label for="senha">Senha</label>
+        <InputText id="senha" type="password" @bind-Value="Input!.Senha" autocomplete="current-password" />
+        @if (erro)
+        {
+            <div class="login-error" role="alert">Usuário ou senha inválidos.</div>
+        }
+        <button type="submit" class="login-btn">Entrar</button>
+    </EditForm>
+    <p class="login-foot">Acesso restrito a usuários autorizados.</p>
+</section>
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+    [SupplyParameterFromQuery(Name = "returnUrl")] private string? ReturnUrl { get; set; }
+    [SupplyParameterFromForm] private LoginInput? Input { get; set; }
+    private bool erro;
+
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task Entrar()
+    {
+        var usuario = Auth.Validar(Input?.Usuario, Input?.Senha);
+        if (usuario is null || HttpContext is null)
+        {
+            await Task.Delay(600); // dificulta tentativas em sequência
+            erro = true;
+            return;
+        }
+
+        // Perfil (admin/usuario) e câmera responsável vão como claims no cookie.
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, Acesso.CriarPrincipal(usuario));
+
+        // Só aceita retorno para caminhos locais (evita redirecionamento para sites externos).
+        var destino = !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/')
+            && !ReturnUrl.StartsWith("//") && !ReturnUrl.StartsWith("/\\")
+            ? ReturnUrl : "/";
+        Navigation.NavigateTo(destino, forceLoad: true);
+    }
+
+    public sealed class LoginInput
+    {
+        public string Usuario { get; set; } = "";
+        public string Senha { get; set; } = "";
+    }
+}

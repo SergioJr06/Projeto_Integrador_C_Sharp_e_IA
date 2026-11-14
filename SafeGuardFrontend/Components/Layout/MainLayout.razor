@@ -1,0 +1,41 @@
+@inherits LayoutComponentBase
+@using System.Security.Claims
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z" fill="currentColor"/></svg></div>
+            <div><strong>SafeGuard IA</strong><small>Monitoramento de EPIs</small></div>
+        </div>
+        <div class="nav-label">Navegação</div>
+        <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">Painel de conformidade</NavLink>
+        <NavLink class="nav-link" href="/relatorios">Relatórios</NavLink>
+        <AuthorizeView Roles="admin">
+            <div class="nav-label nav-label-admin">Administração</div>
+            <NavLink class="nav-link" href="/cameras">Câmeras e EPIs</NavLink>
+            <NavLink class="nav-link" href="/usuarios">Usuários e permissões</NavLink>
+        </AuthorizeView>
+        <div class="sidebar-bottom">
+            <AuthorizeView>
+                <Authorized>
+                    <div class="user">
+                        <div class="avatar">@Inicial(context.User)</div>
+                        <div><strong>@Nome(context.User)</strong><small>@context.User.Papel()</small></div>
+                    </div>
+                    <form method="post" action="/logout"><button type="submit" class="logout-btn">Sair</button></form>
+                </Authorized>
+            </AuthorizeView>
+        </div>
+    </aside>
+    <main class="main-content">@Body</main>
+</div>
+
+@code {
+    private static string Nome(ClaimsPrincipal user) =>
+        user.FindFirst("nome")?.Value ?? user.Identity?.Name ?? "Usuário";
+
+    private static string Inicial(ClaimsPrincipal user)
+    {
+        var nome = Nome(user);
+        return nome.Length > 0 ? nome.Substring(0, 1).ToUpperInvariant() : "U";
+    }
+}

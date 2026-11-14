@@ -1,0 +1,201 @@
+@page "/cameras"
+@attribute [Authorize(Roles = "admin")]
+@inject CameraConfigService Config
+<PageTitle>SafeGuard IA | Câmeras e EPIs</PageTitle>
+
+<header class="page-header">
+    <div>
+        <div class="eyebrow">Configuração</div>
+        <h1>Câmeras e EPIs obrigatórios</h1>
+        <p class="subtitle">Ajuste as câmeras e clique em <strong>Salvar e aplicar</strong>. O motor de IA aplica a mudança em cerca de 1 segundo, sem reiniciar.</p>
+    </div>
+</header>
+
+@if (ListaCameras is not null)
+{
+    <section class="motor-status @(StatusAtual.Online ? (StatusAtual.Estado == "sem_camera" ? "motor-alerta" : "motor-ok") : "motor-off")">
+        <div>
+            <strong>Motor de IA: @(StatusAtual.Online ? "online" : "desligado")</strong>
+            @if (StatusAtual.Online)
+            {
+                if (StatusAtual.Estado == "sem_camera")
+                {
+                    <span>Não conseguiu abrir a câmera <b>@StatusAtual.Nome</b> (@StatusAtual.Camera). Confira a fonte e salve de novo.</span>
+                }
+                else
+                {
+                    <span>Monitorando <b>@StatusAtual.Nome</b> (@StatusAtual.Camera) · EPIs fiscalizados: @(StatusAtual.Epis.Count == 0 ? "nenhum" : string.Join(", ", StatusAtual.Epis))</span>
+                }
+            }
+            else
+            {
+                <span>Inicie o motor (iniciar.bat) para aplicar as configurações. O que você salvar fica guardado e é aplicado quando ele ligar. Se a janela do motor já está aberta e mesmo assim aparece “desligado”, ele está rodando de <b>outra pasta</b> do projeto: feche tudo com o parar.bat e use apenas o iniciar.bat desta pasta.</span>
+            }
+        </div>
+        <a class="btn" href="/cameras">Atualizar status</a>
+    </section>
+
+    <form method="post" @onsubmit="Enviar" @formname="cameras">
+        <AntiforgeryToken />
+        <button type="submit" name="acao" value="salvar" class="sr-only" tabindex="-1">Salvar</button>
+
+        <div class="notice">
+            Fonte: <strong>0</strong>, <strong>1</strong>… para webcams, ou o endereço RTSP da câmera IP.
+            Marque <strong>“Usar esta câmera”</strong> para escolher qual câmera o motor de IA monitora agora.
+            <br /><small>Arquivo: @Config.Caminho</small>
+        </div>
+
+        <section class="camera-list">
+            @foreach (var cam in ListaCameras)
+            {
+                <article class="panel camera-card @(cam.Id == Ativa ? "camera-ativa" : "")">
+                    <input type="hidden" name="ids" value="@cam.Id" />
+                    <div class="panel-heading">
+                        <div>
+                            <h2>@cam.Id</h2>
+                            <p>@Atalho(cam)</p>
+                        </div>
+                        <div class="card-actions">
+                            <label class="check check-ativa">
+                                <input type="radio" name="ativa" value="@cam.Id" checked="@(cam.Id == Ativa)" />
+                                <span>Usar esta câmera</span>
+                            </label>
+                            @if (cam.Id != "cam_0")
+                            {
+                                <button type="submit" name="acao" value="@("remover:" + cam.Id)" class="btn btn-danger" onclick="return confirm('Remover esta câmera?')">Remover</button>
+                            }
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label class="field"><span>Nome</span><input type="text" name="@("nome_" + cam.Id)" value="@cam.Nome" /></label>
+                        <label class="field"><span>Fonte</span><input type="text" name="@("fonte_" + cam.Id)" value="@cam.Fonte" /></label>
+                    </div>
+                    <div class="epi-options">
+                        @foreach (var op in CameraConfigService.Opcoes)
+                        {
+                            <label class="check">
+                                <input type="checkbox" name="@("epi_" + cam.Id + "_" + op.Chave)" checked="@cam.Epis[op.Chave]" />
+                                <span>@op.Rotulo</span>
+                            </label>
+                        }
+                    </div>
+                </article>
+            }
+        </section>
+
+        <div class="save-inline">
+            <button type="submit" name="acao" value="adicionar" class="btn">Adicionar câmera</button>
+            <button type="submit" name="acao" value="salvar" class="btn btn-primary btn-lg">Salvar e aplicar</button>
+        </div>
+
+        <div class="action-bar">
+            <span class="action-msg @(erro ? "action-msg-error" : "")">@mensagem</span>
+            <button type="submit" name="acao" value="adicionar" class="btn">Adicionar câmera</button>
+            <button type="submit" name="acao" value="salvar" class="btn btn-primary btn-lg">Salvar e aplicar</button>
+        </div>
+    </form>
+}
+else
+{
+    <div class="notice notice-error">@mensagem</div>
+}
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+    private List<CameraConfig>? ListaCameras;
+    private StatusMotor StatusAtual = new();
+    private string Ativa = "cam_0";
+    private string mensagem = "";
+    private bool erro;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            ListaCameras = await Config.ListarAsync();
+            var ativa = await Config.LerAtivaAsync();
+            StatusAtual = Config.LerStatus();
+            // Câmera marcada: a do arquivo; senão a que o motor está usando; senão a primeira.
+            Ativa = ListaCameras.Any(c => c.Id == ativa) ? ativa
+                  : ListaCameras.Any(c => c.Id == StatusAtual.Camera) ? StatusAtual.Camera
+                  : ListaCameras.FirstOrDefault()?.Id ?? "cam_0";
+        }
+        catch (Exception ex) { mensagem = "Não foi possível ler o config.json: " + ex.Message; erro = true; }
+    }
+
+    private string Atalho(CameraConfig cam)
+    {
+        var posicao = ListaCameras!.IndexOf(cam) + 1;
+        return posicao <= 9 ? $"Tecla {posicao} no motor de IA" : "Sem tecla de atalho no motor de IA";
+    }
+
+    private async Task Enviar()
+    {
+        var form = HttpContext!.Request.Form;
+        var lista = new List<CameraConfig>();
+        foreach (var valor in form["ids"])
+        {
+            var id = valor ?? "";
+            if (!System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Za-z0-9_-]{1,40}$")) continue;
+            var cam = CameraConfigService.NovaCamera(id, form["nome_" + id].ToString(), form["fonte_" + id].ToString());
+            foreach (var op in CameraConfigService.Opcoes)
+                cam.Epis[op.Chave] = form.ContainsKey("epi_" + id + "_" + op.Chave);
+            lista.Add(cam);
+        }
+
+        var acao = form["acao"].ToString();
+        var ativa = form["ativa"].ToString();
+        if (acao == "adicionar")
+        {
+            var n = 0;
+            while (lista.Any(c => c.Id == $"cam_{n}")) n++;
+            lista.Add(CameraConfigService.NovaCamera($"cam_{n}", $"Câmera {n}", n.ToString()));
+        }
+        else if (acao.StartsWith("remover:"))
+        {
+            var alvo = acao.Substring("remover:".Length);
+            if (alvo != "cam_0") lista.RemoveAll(c => c.Id == alvo);
+        }
+        if (!lista.Any(c => c.Id == ativa))
+            ativa = lista.Any(c => c.Id == "cam_0") ? "cam_0" : lista.FirstOrDefault()?.Id ?? "";
+        ListaCameras = lista;
+        Ativa = ativa;
+
+        if (lista.Any(c => string.IsNullOrWhiteSpace(c.Nome) || string.IsNullOrWhiteSpace(c.Fonte)))
+        {
+            mensagem = "Preencha o nome e a fonte de todas as câmeras para salvar."; erro = true;
+            StatusAtual = Config.LerStatus();
+            return;
+        }
+        try
+        {
+            var revisao = await Config.SalvarAsync(lista, ativa);
+            StatusAtual = await Config.AguardarAplicacaoAsync(revisao, TimeSpan.FromSeconds(4));
+            var hora = DateTime.Now.ToString("HH:mm:ss");
+            if (StatusAtual.Online && StatusAtual.Revisao == revisao)
+            {
+                if (StatusAtual.Estado == "sem_camera")
+                {
+                    mensagem = $"Salvo às {hora}. O motor leu a configuração, mas não conseguiu abrir a câmera \"{StatusAtual.Nome}\". Confira a fonte.";
+                    erro = true;
+                }
+                else
+                {
+                    mensagem = $"Salvo e aplicado pelo motor de IA às {hora}. Câmera ativa: {StatusAtual.Nome}.";
+                    erro = false;
+                }
+            }
+            else if (StatusAtual.Online)
+            {
+                mensagem = $"Salvo às {hora}. O motor ainda não confirmou; clique em \"Atualizar status\" em alguns segundos.";
+                erro = false;
+            }
+            else
+            {
+                mensagem = $"Salvo às {hora}. O motor de IA está desligado; a configuração será aplicada quando ele iniciar.";
+                erro = false;
+            }
+        }
+        catch (Exception ex) { mensagem = "Não foi possível salvar: " + ex.Message; erro = true; StatusAtual = Config.LerStatus(); }
+    }
+}

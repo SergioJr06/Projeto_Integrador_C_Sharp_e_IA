@@ -1,0 +1,29 @@
+@SafeGuardBackend_HostAddress = http://localhost:5168
+
+GET {{SafeGuardBackend_HostAddress}}/api/monitoramento
+Accept: application/json
+
+###
+
+### Teste do POST (troque o caminho por um .jpg real na sua máquina)
+POST {{SafeGuardBackend_HostAddress}}/api/monitoramento
+Content-Type: multipart/form-data; boundary=----SafeGuard
+
+------SafeGuard
+Content-Disposition: form-data; name="CameraId"
+
+cam_0
+------SafeGuard
+Content-Disposition: form-data; name="EpisFaltantes"
+
+sem capacete
+------SafeGuard
+Content-Disposition: form-data; name="NivelConfianca"
+
+0.92
+------SafeGuard
+Content-Disposition: form-data; name="Imagem"; filename="teste.jpg"
+Content-Type: image/jpeg
+
+< ./teste.jpg
+------SafeGuard--

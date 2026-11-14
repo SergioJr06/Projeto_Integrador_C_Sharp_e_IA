@@ -1,0 +1,206 @@
+@page "/"
+@attribute [Authorize]
+@using System.Security.Claims
+@inject MonitoramentoService Monitoramento
+<PageTitle>SafeGuard IA | Painel</PageTitle>
+<HeadContent>
+    @if (Selecionada is null) { <meta http-equiv="refresh" content="30" /> }
+</HeadContent>
+
+<header class="page-header">
+    <div>
+        <div class="eyebrow">Segurança do Trabalho</div>
+        <h1>Painel de conformidade de EPIs</h1>
+        <p class="subtitle">Não conformidades detectadas automaticamente pelo SafeGuard IA.</p>
+    </div>
+    <form method="get" action="/" class="toolbar">
+        <label class="field"><span>Período</span>
+            <select name="periodo" onchange="this.form.submit()">
+                <option value="7" selected="@(Periodo == 7)">Últimos 7 dias</option>
+                <option value="30" selected="@(Periodo == 30)">Últimos 30 dias</option>
+                <option value="0" selected="@(Periodo == 0)">Todo o histórico</option>
+            </select>
+        </label>
+        @if (Admin)
+        {
+            <label class="field"><span>Câmera</span>
+                <select name="camera" onchange="this.form.submit()">
+                    <option value="">Todas</option>
+                    @foreach (var c in Cameras) { <option value="@c" selected="@(Camera == c)">@c</option> }
+                </select>
+            </label>
+        }
+        else
+        {
+            <div class="field"><span>Câmera sob sua responsabilidade</span><div class="field-fixo">@(Camera == "" ? "Nenhuma atribuída" : Camera)</div></div>
+        }
+        <a class="btn" href="@Url()">Atualizar</a>
+        <a class="btn @(Lista.Count == 0 ? "disabled" : "")" href="@ExportUrl">Exportar CSV</a>
+    </form>
+</header>
+
+@if (!string.IsNullOrWhiteSpace(aviso)) { <div class="notice">@aviso</div> }
+
+<section class="stats-grid">
+    <article class="stat-card"><span class="stat-label">Infrações no período</span><div class="stat-value">@Lista.Count</div><div class="stat-foot">Conforme os filtros aplicados</div></article>
+    <article class="stat-card"><span class="stat-label">Ocorrências hoje</span><div class="stat-value">@Hoje</div><div class="stat-foot">@DateTime.Today.ToString("dd/MM/yyyy")</div></article>
+    <article class="stat-card"><span class="stat-label">EPI mais recorrente</span><div class="stat-value stat-text">@EpiMaisFrequente</div><div class="stat-foot">Maior número de ocorrências</div></article>
+    <article class="stat-card"><span class="stat-label">Confiança média da IA</span><div class="stat-value">@ConfMedia.ToString("P1")</div><div class="stat-foot">Nas detecções listadas</div></article>
+</section>
+
+<section class="charts-grid">
+    <article class="panel">
+        <div class="panel-heading"><div><h2>Infrações por tipo de EPI</h2><p>Quantidade de ocorrências por equipamento</p></div></div>
+        <div id="epiChart" class="chart-area" data-cats="@CategoriasJson"></div>
+    </article>
+    <article class="panel">
+        <div class="panel-heading"><div><h2>Histórico de alertas</h2><p>Ocorrências por dia · últimos @DiasGrafico dias</p></div></div>
+        <div id="timelineChart" class="chart-area" data-days="@SerieJson"></div>
+    </article>
+</section>
+
+<section class="panel history-panel" id="historico">
+    <div class="panel-heading">
+        <div><h2>Histórico de infrações</h2><p>Selecione um registro para consultar a evidência.</p></div>
+        <span class="record-count">@Lista.Count registros</span>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Ocorrência</th><th>Câmera</th><th>EPIs não conformes</th><th>Confiança</th><th>Data e hora</th><th>Evidência</th></tr></thead>
+            <tbody>
+            @foreach (var item in PaginaAtual)
+            {
+                <tr @key="item.Id">
+                    <td><span class="id-pill">#@item.Id.ToString("D4")</span></td>
+                    <td>@item.CameraId</td>
+                    <td><div class="epi-tags">@foreach (var epi in EpiFormatter.Dividir(item.EpisFaltantes)) { <span class="epi-tag">@epi</span> }</div></td>
+                    <td><div class="confidence"><div class="confidence-track"><span style="width:@(Math.Clamp((double)item.NivelConfianca * 100, 0, 100).ToString("F0", System.Globalization.CultureInfo.InvariantCulture))%"></span></div><strong>@item.NivelConfianca.ToString("P0")</strong></div></td>
+                    <td>@item.DataHora.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>
+                        <a class="thumb-btn" href="@(Url(ver: item.Id) + "#historico")" title="Ver evidência">
+                            <span class="thumb"><img src="@item.CaminhoEvidencia" alt="" loading="lazy" onerror="this.parentElement.classList.add('sem-img')" /><span class="thumb-vazio">Sem imagem</span></span>
+                            <span>Visualizar</span>
+                        </a>
+                    </td>
+                </tr>
+            }
+            @if (Lista.Count == 0)
+            {
+                <tr><td colspan="6" class="empty">Nenhuma infração encontrada para os filtros selecionados.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <div class="pager">
+        <span>Página @Pagina de @TotalPaginas</span>
+        <div>
+            <a class="btn @(Pagina <= 1 ? "disabled" : "")" href="@(Url(pagina: Pagina - 1) + "#historico")">Anterior</a>
+            <a class="btn @(Pagina >= TotalPaginas ? "disabled" : "")" href="@(Url(pagina: Pagina + 1) + "#historico")">Próxima</a>
+        </div>
+    </div>
+</section>
+
+@if (Selecionada is not null)
+{
+    <div class="modal-backdrop">
+        <a class="modal-dismiss" href="@(Url() + "#historico")" aria-label="Fechar"></a>
+        <section class="evidence-modal">
+            <div class="modal-header">
+                <div><div class="eyebrow">Evidência da ocorrência</div><h2>Infração #@Selecionada.Id.ToString("D4")</h2></div>
+                <a class="close-btn" href="@(Url() + "#historico")" aria-label="Fechar">×</a>
+            </div>
+            <div class="evidence-frame">
+                <img src="@Selecionada.CaminhoEvidencia" alt="Evidência da infração" onerror="this.style.display='none'" />
+                <div class="image-fallback">Foto não encontrada no servidor.<br /><small>Ela pode ter sido capturada em outra pasta do projeto. Para manter as fotos ao trocar de pasta, veja “Evidencias:Pasta” no README.</small></div>
+            </div>
+            <div class="evidence-details">
+                <div><small>Câmera</small><strong>@Selecionada.CameraId</strong></div>
+                <div><small>EPIs não conformes</small><strong>@(string.Join(", ", EpiFormatter.Dividir(Selecionada.EpisFaltantes)))</strong></div>
+                <div><small>Confiança</small><strong>@Selecionada.NivelConfianca.ToString("P1")</strong></div>
+                <div><small>Data e hora</small><strong>@Selecionada.DataHora.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</strong></div>
+            </div>
+            <div class="modal-actions"><a class="btn" href="@(Url() + "#historico")">Fechar</a></div>
+        </section>
+    </div>
+}
+
+@code {
+    private const int TamanhoPagina = 10;
+
+    [SupplyParameterFromQuery(Name = "periodo")] private int? PeriodoQ { get; set; }
+    [SupplyParameterFromQuery(Name = "camera")] private string? CameraQ { get; set; }
+    [SupplyParameterFromQuery(Name = "pagina")] private int? PaginaQ { get; set; }
+    [SupplyParameterFromQuery(Name = "ver")] private int? VerQ { get; set; }
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<InfracaoDto> Todos = new();
+    private List<InfracaoDto> Lista = new();
+    private List<string> Cameras = new();
+    private InfracaoDto? Selecionada;
+    private int Periodo = 7;
+    private string Camera = "";
+    private int Pagina = 1;
+    private bool Admin;
+    private string aviso = "";
+    private string CategoriasJson = "[]";
+    private string SerieJson = "[]";
+
+    private int DiasGrafico => Periodo == 0 ? 30 : Periodo;
+    private int TotalPaginas => Math.Max(1, (int)Math.Ceiling(Lista.Count / (double)TamanhoPagina));
+    private IEnumerable<InfracaoDto> PaginaAtual => Lista.Skip((Pagina - 1) * TamanhoPagina).Take(TamanhoPagina);
+    private double ConfMedia => Lista.Count == 0 ? 0 : (double)Lista.Average(x => x.NivelConfianca);
+    private int Hoje => Lista.Count(x => x.DataHora.ToLocalTime().Date == DateTime.Today);
+    private string EpiMaisFrequente => Lista.Count == 0 ? "—"
+        : Lista.SelectMany(x => EpiFormatter.Dividir(x.EpisFaltantes)).GroupBy(x => x)
+              .OrderByDescending(g => g.Count()).First().Key;
+    private string ExportUrl => "/exportar.csv?periodo=" + Periodo + "&camera=" + Uri.EscapeDataString(Camera);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Periodo = PeriodoQ is 0 or 7 or 30 ? PeriodoQ.Value : 7;
+
+        var reais = await Monitoramento.ListarAsync();
+        if (reais is not null) Todos = reais;
+        else
+        {
+            Todos = PainelDados.Demo();
+            aviso = "Modo demonstração: API indisponível. Exibindo dados simulados.";
+        }
+
+        // Permissionamento: usuário comum só enxerga as infrações da própria câmera.
+        var usuario = AuthState is null ? new ClaimsPrincipal() : (await AuthState).User;
+        Admin = usuario.EhAdmin();
+        Todos = usuario.Permitidas(Todos);
+        if (!Admin && usuario.CameraDoUsuario() == "")
+            aviso = "Nenhuma câmera foi atribuída ao seu usuário. Peça ao administrador para definir a sua câmera.";
+
+        Cameras = Todos.Select(x => x.CameraId).Distinct().OrderBy(x => x).ToList();
+        Camera = Admin ? (CameraQ is not null && Cameras.Contains(CameraQ) ? CameraQ : "") : usuario.CameraDoUsuario();
+        Lista = PainelDados.Filtrar(Todos, Periodo, Camera);
+        Pagina = Math.Clamp(PaginaQ ?? 1, 1, TotalPaginas);
+        Selecionada = VerQ is int id ? Todos.FirstOrDefault(x => x.Id == id) : null;
+
+        var categorias = Lista
+            .SelectMany(x => EpiFormatter.Dividir(x.EpisFaltantes))
+            .GroupBy(x => x)
+            .Select(g => new { name = g.Key, count = g.Count() })
+            .OrderByDescending(x => x.count).ToList();
+        var n = DiasGrafico;
+        var serie = Enumerable.Range(0, n)
+            .Select(i => DateTime.Today.AddDays(-(n - 1) + i))
+            .Select(d => new { label = d.ToString("dd/MM"), count = Lista.Count(x => x.DataHora.ToLocalTime().Date == d) })
+            .ToList();
+        CategoriasJson = System.Text.Json.JsonSerializer.Serialize(categorias);
+        SerieJson = System.Text.Json.JsonSerializer.Serialize(serie);
+    }
+
+    private string Url(int? pagina = null, int? ver = null)
+    {
+        var q = new List<string> { "periodo=" + Periodo };
+        if (Camera != "") q.Add("camera=" + Uri.EscapeDataString(Camera));
+        var p = pagina ?? Pagina;
+        if (p > 1) q.Add("pagina=" + p);
+        if (ver is not null) q.Add("ver=" + ver);
+        return "/?" + string.Join("&", q);
+    }
+}

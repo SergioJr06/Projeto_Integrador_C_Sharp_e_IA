@@ -1,0 +1,16 @@
+# ── Visão Computacional e Deep Learning ──────────────────────
+opencv-python
+ultralytics
+ultralytics-thop
+torch
+torchvision
+
+# ── Dados, Rede e Utilitários ────────────────────────────────
+numpy
+pillow
+PyYAML
+requests
+
+# ── Dependências indiretas necessárias ──────────────────────
+psutil
+typing_extensions

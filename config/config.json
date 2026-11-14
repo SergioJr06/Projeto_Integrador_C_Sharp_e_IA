@@ -1,0 +1,28 @@
+{
+  "cameras": {
+    "cam_0": {
+      "nome": "Escrit\u00F3rio",
+      "source": 0,
+      "require_helmet": true,
+      "require_glasses": true,
+      "require_gloves": true,
+      "require_boots": false,
+      "require_ear_protection": true,
+      "require_vest": false,
+      "require_mask": false
+    },
+    "cam_1": {
+      "nome": "Almoxerifado",
+      "source": 0,
+      "require_helmet": true,
+      "require_glasses": true,
+      "require_gloves": true,
+      "require_boots": true,
+      "require_ear_protection": true,
+      "require_vest": true,
+      "require_mask": true
+    }
+  },
+  "ativa": "cam_0",
+  "revisao": "639302626269061787"
+}

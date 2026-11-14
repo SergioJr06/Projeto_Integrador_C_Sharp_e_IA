@@ -1,0 +1,188 @@
+@page "/usuarios"
+@attribute [Authorize(Roles = "admin")]
+@inject AuthService Contas
+@inject CameraConfigService Config
+<PageTitle>SafeGuard IA | Usuários e permissões</PageTitle>
+
+<header class="page-header">
+    <div>
+        <div class="eyebrow">Administração</div>
+        <h1>Usuários e permissões</h1>
+        <p class="subtitle">Cadastre quem acessa o painel e defina a câmera pela qual cada pessoa é responsável.</p>
+    </div>
+</header>
+
+@if (!string.IsNullOrWhiteSpace(mensagem))
+{
+    <div class="notice @(erro ? "notice-error" : "")" role="status">@mensagem</div>
+}
+
+<section class="perfis-grid">
+    <article class="panel perfil-card">
+        <span class="badge badge-admin">Administrador</span>
+        <p>Acesso total: painel, relatórios de todas as câmeras, configuração de câmeras e EPIs e gestão de usuários.</p>
+    </article>
+    <article class="panel perfil-card">
+        <span class="badge">Usuário</span>
+        <p>Somente leitura, apenas da câmera pela qual é responsável: gráficos, imagens de evidência e relatórios descritivos personalizáveis. Não altera EPIs nem cadastros.</p>
+    </article>
+</section>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div><h2>Adicionar usuário</h2><p>A senha precisa ter pelo menos 8 caracteres. Ela fica guardada apenas como hash.</p></div>
+    </div>
+    <form method="post" @onsubmit="Adicionar" @formname="usuario-novo">
+        <AntiforgeryToken />
+        <div class="user-form">
+            <label class="field"><span>Nome</span><input type="text" name="novo_nome" value="@novoNome" maxlength="60" autocomplete="off" /></label>
+            <label class="field"><span>Usuário (login)</span><input type="text" name="novo_login" value="@novoLogin" maxlength="32" autocomplete="off" /></label>
+            <label class="field"><span>Senha</span><input type="password" name="novo_senha" autocomplete="new-password" /></label>
+            <label class="field"><span>Perfil</span>
+                <select name="novo_perfil">
+                    <option value="usuario" selected="@(novoPerfil == Perfis.Usuario)">Usuário (somente leitura)</option>
+                    <option value="admin" selected="@(novoPerfil == Perfis.Admin)">Administrador</option>
+                </select>
+            </label>
+            <label class="field"><span>Câmera responsável</span>
+                <select name="nova_camera">
+                    <option value="">Escolha a câmera…</option>
+                    @foreach (var c in Cameras) { <option value="@c.Id" selected="@(novaCamera == c.Id)">@c.Id · @c.Nome</option> }
+                </select>
+            </label>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn btn-primary btn-lg">Adicionar usuário</button></div>
+    </form>
+</section>
+
+<section class="panel usuarios-panel">
+    <div class="panel-heading">
+        <div><h2>Usuários cadastrados</h2><p>Deixe “Nova senha” em branco para manter a senha atual. Mudanças de perfil e câmera valem na próxima página aberta.</p></div>
+        <span class="record-count">@Lista.Count @(Lista.Count == 1 ? "usuário" : "usuários")</span>
+    </div>
+    <form method="post" @onsubmit="SalvarLista" @formname="usuarios-editar">
+        <AntiforgeryToken />
+        <button type="submit" name="acao" value="salvar" class="sr-only" tabindex="-1">Salvar</button>
+        <div class="table-wrap">
+            <table class="tabela-usuarios">
+                <thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Câmera responsável</th><th>Nova senha</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var u in Lista)
+                {
+                    var souEu = string.Equals(u.Usuario, Eu, StringComparison.OrdinalIgnoreCase);
+                    <tr @key="u.Usuario">
+                        <td>
+                            <input type="hidden" name="logins" value="@u.Usuario" />
+                            <input type="text" class="cell-input" name="@("nome_" + u.Usuario)" value="@u.Nome" maxlength="60" />
+                        </td>
+                        <td><strong>@u.Usuario</strong>@if (souEu) { <span class="badge badge-voce">você</span> }</td>
+                        <td>
+                            <select class="cell-input" name="@("perfil_" + u.Usuario)" disabled="@souEu">
+                                <option value="usuario" selected="@(u.Perfil == Perfis.Usuario)">Usuário</option>
+                                <option value="admin" selected="@(u.Perfil == Perfis.Admin)">Administrador</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select class="cell-input" name="@("camera_" + u.Usuario)">
+                                <option value="" selected="@(u.CameraId == "")">Todas (somente administrador)</option>
+                                @foreach (var c in Cameras) { <option value="@c.Id" selected="@(u.CameraId == c.Id)">@c.Id · @c.Nome</option> }
+                                @if (u.CameraId != "" && !Cameras.Any(c => c.Id == u.CameraId))
+                                {
+                                    <option value="@u.CameraId" selected="selected">@u.CameraId · (câmera removida)</option>
+                                }
+                            </select>
+                        </td>
+                        <td><input type="password" class="cell-input" name="@("senha_" + u.Usuario)" placeholder="Manter atual" autocomplete="new-password" /></td>
+                        <td>
+                            @if (!souEu)
+                            {
+                                <button type="submit" name="acao" value="@("remover:" + u.Usuario)" class="btn btn-danger" onclick="return confirm('Remover este usuário? O acesso dele termina na hora.')">Remover</button>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (Lista.Count == 0)
+                {
+                    <tr><td colspan="6" class="empty">Nenhum usuário cadastrado.</td></tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <div class="form-actions"><button type="submit" name="acao" value="salvar" class="btn btn-primary btn-lg">Salvar alterações</button></div>
+    </form>
+    <p class="arquivo-info">Cadastro em <code>@Contas.Caminho</code></p>
+</section>
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    private List<UsuarioConfig> Lista = new();
+    private List<CameraConfig> Cameras = new();
+    private string mensagem = "";
+    private bool erro;
+    private string novoNome = "", novoLogin = "", novoPerfil = Perfis.Usuario, novaCamera = "";
+
+    private string Eu => HttpContext?.User.Identity?.Name ?? "";
+
+    protected override async Task OnInitializedAsync() => await Carregar();
+
+    private async Task Carregar()
+    {
+        Lista = Contas.Listar();
+        try { Cameras = await Config.ListarAsync(); }
+        catch (Exception) { Cameras = new(); }
+    }
+
+    private async Task Adicionar()
+    {
+        var form = HttpContext!.Request.Form;
+        novoNome = form["novo_nome"].ToString();
+        novoLogin = form["novo_login"].ToString();
+        novoPerfil = form["novo_perfil"].ToString() == Perfis.Admin ? Perfis.Admin : Perfis.Usuario;
+        novaCamera = form["nova_camera"].ToString();
+
+        var falha = Contas.Adicionar(novoNome, novoLogin, form["novo_senha"].ToString(), novoPerfil, novaCamera);
+        if (falha is null)
+        {
+            mensagem = $"Usuário \"{novoLogin.Trim()}\" criado.";
+            erro = false;
+            novoNome = novoLogin = novaCamera = "";
+            novoPerfil = Perfis.Usuario;
+        }
+        else { mensagem = falha; erro = true; }
+        await Carregar();
+    }
+
+    private async Task SalvarLista()
+    {
+        var form = HttpContext!.Request.Form;
+        var acao = form["acao"].ToString();
+
+        if (acao.StartsWith("remover:"))
+        {
+            var alvo = acao.Substring("remover:".Length);
+            var falha = Contas.Remover(alvo, Eu);
+            mensagem = falha ?? $"Usuário \"{alvo}\" removido.";
+            erro = falha is not null;
+        }
+        else
+        {
+            var falhas = new List<string>();
+            foreach (var valor in form["logins"])
+            {
+                var login = valor ?? "";
+                var atual = Contas.Obter(login);
+                if (atual is null) continue;
+                // Ninguém altera o próprio perfil por aqui (evita o administrador se rebaixar sem querer).
+                var perfil = string.Equals(login, Eu, StringComparison.OrdinalIgnoreCase)
+                    ? atual.Perfil : form["perfil_" + login].ToString();
+                var falha = Contas.Atualizar(login, form["nome_" + login].ToString(), perfil,
+                    form["camera_" + login].ToString(), form["senha_" + login].ToString());
+                if (falha is not null) falhas.Add($"{login}: {falha}");
+            }
+            erro = falhas.Count > 0;
+            mensagem = erro ? "Algumas alterações não foram salvas — " + string.Join(" ", falhas) : "Alterações salvas.";
+        }
+        await Carregar();
+    }
+}
